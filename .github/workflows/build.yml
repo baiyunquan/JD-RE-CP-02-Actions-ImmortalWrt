@@ -31,9 +31,9 @@ jobs:
         run: |
           bash -n diy.sh scripts/*.sh
           sh -n files/etc/init.d/luban-extroot
-          test -f package/nikki/nikki/Makefile
-          test -f package/nikki/mihomo-meta/Makefile
-          test -f package/nikki/luci-app-nikki/Makefile
+          # test -f package/nikki/nikki/Makefile
+          # test -f package/nikki/mihomo-meta/Makefile
+          # test -f package/nikki/luci-app-nikki/Makefile
 
       - name: Install build and image tools
         env:
@@ -63,12 +63,12 @@ jobs:
           restore-keys: |
             luban-dl-${{ runner.os }}-
 
-      - name: Prepare feeds, Nikki, files, and configuration
+      - name: Prepare feeds, files, and configuration
         run: |
           cp feeds.conf.default ImmortalWrt/feeds.conf.default
-          rm -rf ImmortalWrt/package/nikki ImmortalWrt/files
-          mkdir -p ImmortalWrt/package/nikki
-          rsync -a --exclude=.git package/nikki/ ImmortalWrt/package/nikki/
+          # rm -rf ImmortalWrt/package/nikki ImmortalWrt/files
+          # mkdir -p ImmortalWrt/package/nikki
+          # rsync -a --exclude=.git package/nikki/ ImmortalWrt/package/nikki/
           cp -a files ImmortalWrt/files
           cp diy.sh ImmortalWrt/diy.sh
           chmod +x ImmortalWrt/diy.sh
@@ -90,13 +90,15 @@ jobs:
           for package_name in \
             filebrowser luci-app-filebrowser luci-app-homeproxy \
             luci-app-tailscale-community luci-app-samba4 qbittorrent \
-            luci-app-qbittorrent mihomo-meta nikki luci-app-nikki; do
+            luci-app-qbittorrent mwan3 luci-app-mwan3; do
             grep -Eq "^CONFIG_PACKAGE_${package_name}=[my]$" .config
           done
           ! grep -q '^CONFIG_PACKAGE_luci-app-filebrowser-go=' .config
-          test -f package/nikki/nikki/Makefile
-          test -f package/nikki/mihomo-meta/Makefile
-          test -f package/nikki/luci-app-nikki/Makefile
+          test -f package/mwan3/Makefile
+          test -f package/luci-app-mwan3/Makefile
+          # test -f package/nikki/nikki/Makefile
+          # test -f package/nikki/mihomo-meta/Makefile
+          # test -f package/nikki/luci-app-nikki/Makefile
 
       - name: Download sources
         working-directory: ImmortalWrt
@@ -118,7 +120,8 @@ jobs:
           mkdir -p build-metadata
           cp ImmortalWrt/.config build-metadata/config.nor
           git -C ImmortalWrt rev-parse HEAD > build-metadata/IMMORTALWRT_COMMIT
-          git -C package/nikki rev-parse HEAD > build-metadata/NIKKI_COMMIT
+          # git -C package/nikki rev-parse HEAD > build-metadata/NIKKI_COMMIT
+          git -C ImmortalWrt/package/mwan3 rev-parse HEAD > build-metadata/MWAN3_COMMIT
           : > build-metadata/FEED_COMMITS
           for feed_dir in ImmortalWrt/feeds/*; do
             test -d "$feed_dir" || continue

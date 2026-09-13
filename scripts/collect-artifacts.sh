@@ -53,7 +53,8 @@ cp "$metadata_dir/config.extroot" "$output_dir/config.extroot"
 cp "$metadata_dir/EXTROOT_MANIFEST" "$output_dir/EXTROOT_MANIFEST"
 cp "$metadata_dir/IMMORTALWRT_COMMIT" "$output_dir/IMMORTALWRT_COMMIT"
 cp "$metadata_dir/FEED_COMMITS" "$output_dir/FEED_COMMITS"
-cp "$metadata_dir/NIKKI_COMMIT" "$output_dir/NIKKI_COMMIT"
+test -f "$metadata_dir/NIKKI_COMMIT" && cp "$metadata_dir/NIKKI_COMMIT" "$output_dir/NIKKI_COMMIT" || true
+test -f "$metadata_dir/MWAN3_COMMIT" && cp "$metadata_dir/MWAN3_COMMIT" "$output_dir/MWAN3_COMMIT" || true
 
 "$(dirname "$0")/build-sd-image.sh" \
 	"$output_dir/JDCOS.bin" \
