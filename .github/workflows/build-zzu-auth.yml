@@ -12,7 +12,15 @@ on:
         required: false
         default: ''
       auth_suffix:
-        description: '运营商后缀（@cmcc / @unicom / @telecom，留空原生校园网）'
+        description: '全局运营商后缀（@cmcc / @unicom / @telecom，留空原生校园网）'
+        required: false
+        default: ''
+      auth_wan_suffix:
+        description: '主物理 WAN 接口宽带（例如 @unicom 或 unicom，留空继承全局）'
+        required: false
+        default: ''
+      auth_wanb_suffix:
+        description: '辅虚拟 WAN (macvlan0) 接口宽带（例如留空或 campus 原生校园网）'
         required: false
         default: ''
   push:
@@ -51,13 +59,19 @@ jobs:
           INPUT_USER: ${{ github.event.inputs.auth_user }}
           INPUT_PASS: ${{ github.event.inputs.auth_password }}
           INPUT_SUFFIX: ${{ github.event.inputs.auth_suffix }}
+          INPUT_WAN_SUFFIX: ${{ github.event.inputs.auth_wan_suffix }}
+          INPUT_WANB_SUFFIX: ${{ github.event.inputs.auth_wanb_suffix }}
           SECRET_USER: ${{ secrets.AUTH_USER }}
           SECRET_PASS: ${{ secrets.AUTH_PASSWORD }}
           SECRET_SUFFIX: ${{ secrets.AUTH_SUFFIX }}
+          SECRET_WAN_SUFFIX: ${{ secrets.AUTH_WAN_SUFFIX }}
+          SECRET_WANB_SUFFIX: ${{ secrets.AUTH_WANB_SUFFIX }}
         run: |
           USER="${INPUT_USER:-$SECRET_USER}"
           PASS="${INPUT_PASS:-$SECRET_PASS}"
           SUFFIX="${INPUT_SUFFIX:-$SECRET_SUFFIX}"
+          WAN_SUFFIX="${INPUT_WAN_SUFFIX:-$SECRET_WAN_SUFFIX}"
+          WANB_SUFFIX="${INPUT_WANB_SUFFIX:-$SECRET_WANB_SUFFIX}"
 
           CRED_FILE="package/zzu-auth/src/credentials.h"
           if [ -n "$USER" ] && [ -n "$PASS" ]; then
@@ -67,9 +81,11 @@ jobs:
           #define CREDENTIALS_H
 
           /* 校园网凭据（由 GitHub Actions 自动化编译注入） */
-          #define AUTH_USER     "$USER"
-          #define AUTH_PASSWORD "$PASS"
-          #define AUTH_SUFFIX   "$SUFFIX"
+          #define AUTH_USER         "$USER"
+          #define AUTH_PASSWORD     "$PASS"
+          #define AUTH_SUFFIX       "$SUFFIX"
+          #define AUTH_WAN_SUFFIX   "$WAN_SUFFIX"
+          #define AUTH_WANB_SUFFIX  "$WANB_SUFFIX"
 
           #endif /* CREDENTIALS_H */
           EOF
@@ -171,3 +187,4 @@ jobs:
           name: zzu-auth-ramips-mt7621
           path: output/zzu-auth-dist/*
           retention-days: 30
+
