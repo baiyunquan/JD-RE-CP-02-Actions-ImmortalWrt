@@ -86,6 +86,7 @@ jobs:
           #define AUTH_SUFFIX       "$SUFFIX"
           #define AUTH_WAN_SUFFIX   "$WAN_SUFFIX"
           #define AUTH_WANB_SUFFIX  "$WANB_SUFFIX"
+          #define PORTAL_SERVER     "172.16.2.9:801"
 
           #endif /* CREDENTIALS_H */
           EOF
