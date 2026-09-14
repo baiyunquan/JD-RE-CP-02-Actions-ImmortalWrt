@@ -1,0 +1,173 @@
+name: Build zzu-auth Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      auth_user:
+        description: '校园网学号/账号（留空则自动读取 Secret: AUTH_USER）'
+        required: false
+        default: ''
+      auth_password:
+        description: '校园网密码（留空则自动读取 Secret: AUTH_PASSWORD）'
+        required: false
+        default: ''
+      auth_suffix:
+        description: '运营商后缀（@cmcc / @unicom / @telecom，留空原生校园网）'
+        required: false
+        default: ''
+  push:
+    paths:
+      - 'package/zzu-auth/**'
+      - '.github/workflows/build-zzu-auth.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zzu-auth-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build zzu-auth (ramips/mt7621)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential zstd tar wget rsync file
+
+      - name: Configure credentials
+        env:
+          INPUT_USER: ${{ github.event.inputs.auth_user }}
+          INPUT_PASS: ${{ github.event.inputs.auth_password }}
+          INPUT_SUFFIX: ${{ github.event.inputs.auth_suffix }}
+          SECRET_USER: ${{ secrets.AUTH_USER }}
+          SECRET_PASS: ${{ secrets.AUTH_PASSWORD }}
+          SECRET_SUFFIX: ${{ secrets.AUTH_SUFFIX }}
+        run: |
+          USER="${INPUT_USER:-$SECRET_USER}"
+          PASS="${INPUT_PASS:-$SECRET_PASS}"
+          SUFFIX="${INPUT_SUFFIX:-$SECRET_SUFFIX}"
+
+          CRED_FILE="package/zzu-auth/src/credentials.h"
+          if [ -n "$USER" ] && [ -n "$PASS" ]; then
+            echo "Injecting credentials into $CRED_FILE..."
+            cat <<EOF > "$CRED_FILE"
+          #ifndef CREDENTIALS_H
+          #define CREDENTIALS_H
+
+          /* 校园网凭据（由 GitHub Actions 自动化编译注入） */
+          #define AUTH_USER     "$USER"
+          #define AUTH_PASSWORD "$PASS"
+          #define AUTH_SUFFIX   "$SUFFIX"
+
+          #endif /* CREDENTIALS_H */
+          EOF
+          else
+            echo "No credentials provided. Falling back to template credentials.example.h."
+            cp package/zzu-auth/src/credentials.example.h "$CRED_FILE"
+          fi
+
+      - name: Download ImmortalWrt MT7621 SDK
+        run: |
+          SDK_URL="https://downloads.immortalwrt.org/snapshots/targets/ramips/mt7621/immortalwrt-sdk-ramips-mt7621_gcc-14.4.0_musl.Linux-x86_64.tar.zst"
+          echo "Downloading SDK from $SDK_URL..."
+          wget -q --show-progress -O sdk.tar.zst "$SDK_URL"
+          tar --zstd -xf sdk.tar.zst
+          rm -f sdk.tar.zst
+          mv immortalwrt-sdk-* sdk
+
+      - name: Compile zzu-auth package
+        working-directory: sdk
+        run: |
+          # 复制 package/zzu-auth 到 SDK package 目录
+          mkdir -p package/zzu-auth
+          cp -r ../package/zzu-auth/openwrt/* package/zzu-auth/
+          mkdir -p package/zzu-auth/src
+          cp -r ../package/zzu-auth/src/* package/zzu-auth/src/
+
+          # 初始化 SDK 配置
+          make defconfig
+
+          # 编译 zzu-auth
+          make package/zzu-auth/compile V=s -j$(nproc)
+
+      - name: Prepare distribution artifacts
+        run: |
+          mkdir -p output/zzu-auth-dist
+
+          # 收集生成的 .apk / .ipk 软件包
+          find sdk/bin/ -type f \( -name "zzu-auth*.apk" -o -name "zzu-auth*.ipk" \) -exec cp -v {} output/zzu-auth-dist/ \;
+
+          # 提取独立的可执行二进制文件并 strip
+          find sdk/build_dir/ -type f -name "zzu-auth" -perm /111 -exec cp -v {} output/zzu-auth-dist/zzu-auth \;
+          if [ -f output/zzu-auth-dist/zzu-auth ]; then
+            STRIP_TOOL=$(find sdk/staging_dir/ -name "*-strip" | head -n 1)
+            if [ -n "$STRIP_TOOL" ] && [ -x "$STRIP_TOOL" ]; then
+              echo "Stripping binary with $STRIP_TOOL..."
+              "$STRIP_TOOL" output/zzu-auth-dist/zzu-auth
+            fi
+          fi
+
+          # 收集 OpenWrt 服务脚本与 UCI 配置文件
+          cp -v package/zzu-auth/openwrt/files/zzu-auth.init output/zzu-auth-dist/zzu-auth.init
+          cp -v package/zzu-auth/openwrt/files/zzu-auth.config output/zzu-auth-dist/zzu-auth.config
+
+          # 编写一键安装脚本
+          cat << 'EOF' > output/zzu-auth-dist/install.sh
+          #!/bin/sh
+          set -e
+          echo "=============================================="
+          echo "  正在安装 zzu-auth 校园网双接口自动认证守护程序  "
+          echo "=============================================="
+
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          cd "$DIR"
+
+          APK_FILE=$(ls zzu-auth*.apk 2>/dev/null | head -n 1)
+          if [ -n "$APK_FILE" ] && which apk >/dev/null 2>&1; then
+            echo ">> 检测到 apk 包管理器，正在安装: $APK_FILE"
+            apk add --allow-untrusted "$APK_FILE"
+          elif [ -f zzu-auth ]; then
+            echo ">> 正在以轻量独立二进制方式安装..."
+            install -d /usr/bin /etc/init.d /etc/config
+            install -m 0755 zzu-auth /usr/bin/zzu-auth
+            install -m 0755 zzu-auth.init /etc/init.d/zzu-auth
+            if [ ! -f /etc/config/zzu-auth ]; then
+              install -m 0644 zzu-auth.config /etc/config/zzu-auth
+            fi
+          else
+            echo "错误: 未找到可安装的软件包或二进制文件！"
+            exit 1
+          fi
+
+          /etc/init.d/zzu-auth enable
+          /etc/init.d/zzu-auth restart
+
+          echo ">> 安装成功！"
+          echo ">> 正在运行的服务状态:"
+          ps | grep zzu-auth | grep -v grep || true
+          echo ">> 可通过 logread -e zzu-auth 实时查看日志。"
+          echo "=============================================="
+          EOF
+          chmod +x output/zzu-auth-dist/install.sh
+
+          echo "产物列表:"
+          ls -lh output/zzu-auth-dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zzu-auth-ramips-mt7621
+          path: output/zzu-auth-dist/*
+          retention-days: 30
